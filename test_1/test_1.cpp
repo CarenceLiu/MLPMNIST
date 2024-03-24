@@ -16,4 +16,5 @@ int main() {
     mlp.initLogger(log_filename, loss_filename);
     mlp.initDataLoader(data_filename, label_filename);
     mlp.basic_single_train(50);
+    return 0;
 }
