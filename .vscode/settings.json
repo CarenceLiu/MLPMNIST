@@ -11,7 +11,8 @@
     "cmath": "cpp",
     "unordered_map": "cpp",
     "initializer_list": "cpp",
-    "new": "cpp"
+    "new": "cpp",
+    "ostream": "cpp"
   },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",
