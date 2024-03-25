@@ -280,7 +280,7 @@ void MLP::single_backward(const vector<double> & output, unsigned char label) {
     label_arr[(size_t)label] = 1.0;
 
     double loss = singleCrossEntropyLoss(output, label_arr);
-    cout << loss<< endl;
+    // cout << loss<< endl;
 
     for(int i = 0; i < 10; ++i) {
         // softmax+MSE
@@ -329,6 +329,39 @@ void MLP::single_backward(const vector<double> & output, unsigned char label) {
         }
         for(int i = 0; i < matrixSize[t-1][0]; ++i) {
             biasMatrix[t-1][i] -= lr*backwardLayerDelta[0][t][i];
+        }
+    }
+}
+
+void MLP::single_backward(const vector<double> & output, unsigned char label, vector<vector<vector<double>>> & weightMatrixUpdate, vector<vector<double>> biasMatrixUpdate) {
+    vector<double> label_arr(10,0);
+    label_arr[(size_t)label] = 1.0;
+
+    double loss = singleCrossEntropyLoss(output, label_arr);
+
+    for(int i = 0; i < 10; ++i) {
+        backwardLayerDelta[0][layerNum-1][i] = output[i] - label_arr[i];
+    }
+
+    //calculate delta
+    for(int t = layerNum-2; t >= 1; t--) {
+        for(int i = 0; i < layerSize[t]; ++i) {
+            for(int k = 0; k < layerSize[t+1]; ++k) {
+                //delta j(l) += delta k(l+1)* w kj(l+1)*f'(z j(l))
+                backwardLayerDelta[0][t][i] += backwardLayerDelta[0][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[0][2*t-1][i]*(1-forwardLayerData[0][2*t-1][i]);
+            }
+        }
+    }
+
+    // update w, b 
+    for(int t = 1; t < layerNum; ++t) {
+        for(int i = 0; i < matrixSize[t-1][0]; ++i) {
+            for(int j = 0; j < matrixSize[t-1][1]; ++j) {
+                weightMatrixUpdate[t-1][i][j] -= lr*backwardLayerDelta[0][t][i]*forwardLayerData[0][2*t-1][j];
+            }
+        }
+        for(int i = 0; i < matrixSize[t-1][0]; ++i) {
+            biasMatrixUpdate[t-1][i] -= lr*backwardLayerDelta[0][t][i];
         }
     }
 }
@@ -465,16 +498,15 @@ void MLP::basic_single_train(int epoch) {
             //     exit(0);
             // }
 #endif
-
-            //validation 
-            auto [loss, accuracy] = validation(dataLoader->validation_data, dataLoader->validation_label);
-
-            // cout << train_hit<<endl;
-            // logger->log(t, loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
-            logger->log(t, loss, 0, accuracy);
-            logger->lossPrint(loss);
         }
 
+        //validation 
+        auto [loss, accuracy] = validation(dataLoader->validation_data, dataLoader->validation_label);
+
+        // cout << train_hit<<endl;
+        // logger->log(t, loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
+        logger->log(t, loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
+        logger->lossPrint(loss);
 
     }
 
@@ -497,19 +529,45 @@ void MLP::basic_batch_train(int epoch) {
 
     for(int t = 0; t < epoch; ++t) {
         dataLoader->dataShuffle();
+        int index = -1;
         double train_hit = 0;
         int batch_size = dataLoader->train_data.size();
-
-        auto output = batch_forward(dataLoader->train_data, dataLoader->train_label);
-        for(int m = 0; m < batch_size; ++m) {
-            auto max_it = max_element(output[m].begin(), output[m].end());
-            int predict_index = distance(output[m].begin(), max_it);
-            if(predict_index == (int)dataLoader->train_label[m]) {
-                train_hit += 1.0;
-            }
+        vector<vector<vector<double>>> weightMatrixUpdate{};
+        vector<vector<double>> biasMatrixUpdate{};
+        for(int i = 1; i < layerNum; ++i) {
+            // cout << layerSize[i] << " " << layerSize[i-1] << endl;
+            auto weight = vector<vector<double>>(layerSize[i], vector<double>(layerSize[i-1], 0));
+            weightMatrixUpdate.push_back(move(weight));
+            auto bias = vector<double>(layerSize[i],0);
+            biasMatrixUpdate.push_back(move(bias));
         }
 
-        batch_backward(output, dataLoader->train_label);
+        //BGD
+        while((index = dataLoader->getNextDataIndex()) != -1) {
+
+            auto output = single_forward(dataLoader->train_data[index], dataLoader->train_label[index]);
+            auto max_it = max_element(output.begin(), output.end());
+            int predict_index = distance(output.begin(), max_it);
+            if(predict_index == (int)dataLoader->train_label[index]) {
+                train_hit += 1.0;
+            }
+
+            single_backward(output, dataLoader->train_label[index], weightMatrixUpdate, biasMatrixUpdate);
+        }
+
+        //BGD update
+        for(int i = 0; i < weightMatrix.size(); ++i){
+            for(int j = 0; j < weightMatrix[i].size(); ++j) {
+                for(int k = 0; k < weightMatrix[i][j].size(); ++k) {
+                    weightMatrix[i][j][k] += weightMatrixUpdate[i][j][k]/(double)batch_size;
+                }
+            }
+        }
+        for(int i = 0; i < biasMatrix.size(); ++i) {
+            for(int j = 0; j < biasMatrix[i].size(); ++j) {
+                biasMatrix[i][j] += biasMatrixUpdate[i][j]/(double)batch_size;
+            }
+        }
 
         auto [loss, accuracy] = validation(dataLoader->validation_data, dataLoader->validation_label);
 

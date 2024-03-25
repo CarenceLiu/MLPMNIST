@@ -27,6 +27,7 @@ namespace std{
             vector<vector<double>> batch_forward(const vector<array<unsigned char, 784>> & input_data, vector<unsigned char> label);
             // vector<array<double, 10>> batch_forward(const vector<array<unsigned char, 784>> & input_data, int batch_size);
             void single_backward(const vector<double> & output, unsigned char label);
+            void single_backward(const vector<double> & output, unsigned char label, vector<vector<vector<double>>> & weightMatrixUpdate, vector<vector<double>> biasMatrixUpdate);
             void batch_backward(const vector<vector<double>> & output, vector<unsigned char> label);
 
             void basic_single_train(int epoch);
