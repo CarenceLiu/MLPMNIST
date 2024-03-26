@@ -53,6 +53,13 @@ DataLoader::DataLoader(const string & data_filename, const string & label_filena
         data_file.read(reinterpret_cast<char *>(image_buf.data()), 784);
         label_file.read(reinterpret_cast<char *>(&label_buf), 1);
         data.push_back(make_pair(image_buf, label_buf));
+#if DEBUG_MODE
+        // for(auto c: image_buf) {
+        //     cout<< (unsigned int)c<<" ";
+        // }
+        // cout <<endl;
+        // cout << "label: "<<(unsigned int)label_buf<<endl;
+#endif
     }
 
 

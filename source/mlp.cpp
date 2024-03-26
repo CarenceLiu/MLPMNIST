@@ -40,7 +40,7 @@ void MLP::initLogger(const string log_filename, const string loss_filename) {
 void MLP::random_init() {
     random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(-1.0, 1.0);
+    std::uniform_real_distribution<> dis(-0.1, 0.1);
  
     // 生成并输出一个随机数
     double random_double = dis(gen);
@@ -61,6 +61,23 @@ void MLP::random_init() {
             }
         }
     }
+
+#if DEBUG_MODE
+    // for(int t = 0; t < matrixSize.size(); ++t) {
+    //     auto [x, y] = matrixSize[t];
+    //     for(int i = 0; i < x; ++i) {
+    //         for(int j = 0; j < y; ++j) {
+    //             cout <<weightMatrix[t][i][j] <<" ";
+    //         }
+    //         cout << endl;
+    //     }
+    //     for(int i = 0; i < x; ++i) {
+    //         cout <<biasMatrix[t][i] <<" ";
+    //     }
+    //     cout <<endl << endl;
+    // }
+    // exit(0);
+#endif
 }
 
 void MLP::singleSoftMax(const vector<double> & output, vector<double> & result) {
@@ -185,71 +202,71 @@ vector<double> MLP::single_forward(const array<unsigned char, 784> & input_data)
     return move(output);
 }
 
-vector<vector<double>> MLP::batch_forward(const vector<array<unsigned char, 784>> & input_data, vector<unsigned char> label) {
-    int batch_size = input_data.size();
-    vector<vector<double>> output(batch_size, vector<double>(10,0));
-    int forwardT = matrixSize.size();
+// vector<vector<double>> MLP::batch_forward(const vector<array<unsigned char, 784>> & input_data, vector<unsigned char> label) {
+//     int batch_size = input_data.size();
+//     vector<vector<double>> output(batch_size, vector<double>(10,0));
+//     int forwardT = matrixSize.size();
 
-    forwardLayerData = vector<vector<vector<double>>>(batch_size, vector<vector<double>>{});
-    backwardLayerDelta = vector<vector<vector<double>>>(batch_size, vector<vector<double>>{});
+//     forwardLayerData = vector<vector<vector<double>>>(batch_size, vector<vector<double>>{});
+//     backwardLayerDelta = vector<vector<vector<double>>>(batch_size, vector<vector<double>>{});
 
-    for(int m = 0; m < batch_size; ++m) {
-        for(int i = 0; i < layerNum; ++i) {
-            backwardLayerDelta[m].push_back(vector<double>(layerSize[i], 0));
-        }
-    }
+//     for(int m = 0; m < batch_size; ++m) {
+//         for(int i = 0; i < layerNum; ++i) {
+//             backwardLayerDelta[m].push_back(vector<double>(layerSize[i], 0));
+//         }
+//     }
 
-    vector<vector<double>> layer_input = vector<vector<double>>(batch_size, vector<double>(784, 0));
-    for(int m = 0; m < batch_size; ++m) {
-        for(int i = 0; i < 784; ++i) {
-            layer_input[m][i] = input_data[m][i];
-        }
-    }
+//     vector<vector<double>> layer_input = vector<vector<double>>(batch_size, vector<double>(784, 0));
+//     for(int m = 0; m < batch_size; ++m) {
+//         for(int i = 0; i < 784; ++i) {
+//             layer_input[m][i] = input_data[m][i];
+//         }
+//     }
 
-    for(int m = 0; m < batch_size; ++m) {
-        forwardLayerData[m].push_back(layer_input[m]); 
-        //for convenience
-        forwardLayerData[m].push_back(layer_input[m]);
-    }
-    //forward 
-    for(int t = 0; t < forwardT; ++t) {
-        auto output = vector<vector<double>>(batch_size, vector<double>(matrixSize[t][0], 0));
-        for(int m = 0; m < batch_size; ++m) {
+//     for(int m = 0; m < batch_size; ++m) {
+//         forwardLayerData[m].push_back(layer_input[m]); 
+//         //for convenience
+//         forwardLayerData[m].push_back(layer_input[m]);
+//     }
+//     //forward 
+//     for(int t = 0; t < forwardT; ++t) {
+//         auto output = vector<vector<double>>(batch_size, vector<double>(matrixSize[t][0], 0));
+//         for(int m = 0; m < batch_size; ++m) {
 
-            // z = sigmoid(wx+b)
-            for(int i = 0; i < matrixSize[t][0]; ++i) {
-                for(int j = 0; j < matrixSize[t][1]; ++j) {
-                    output[m][i] += weightMatrix[t][i][j]*layer_input[m][j];
-                }
-                output[m][i] += biasMatrix[t][i];
-            }
+//             // z = sigmoid(wx+b)
+//             for(int i = 0; i < matrixSize[t][0]; ++i) {
+//                 for(int j = 0; j < matrixSize[t][1]; ++j) {
+//                     output[m][i] += weightMatrix[t][i][j]*layer_input[m][j];
+//                 }
+//                 output[m][i] += biasMatrix[t][i];
+//             }
             
-            for(int m = 0; m < batch_size; ++m) {
-                forwardLayerData[m].push_back(output[m]); 
-            }
+//             for(int m = 0; m < batch_size; ++m) {
+//                 forwardLayerData[m].push_back(output[m]); 
+//             }
             
-            //sigmoid
-            if(t != forwardT-1) {
-                for(int m = 0; m < batch_size; ++m) {
-                    for(int i = 0; i < matrixSize[t][0]; ++i) {
-                        output[m][i] = 1/(1+exp(-output[m][i]));
-                    }
-                    forwardLayerData[m].push_back(output[m]);
-                }
-            }
-        }
-        layer_input = move(output);
-    }
-    for(int m = 0; m < batch_size; ++m) {
-        double max_v = *max_element(layer_input[m].begin(), layer_input[m].end());
-        for(auto & e: layer_input[m]) {
-            e -= max_v;
-        }
-        singleSoftMax(layer_input[m], output[m]);
-        forwardLayerData[m].push_back(output[m]);
-    }
-    return move(output);
-}
+//             //sigmoid
+//             if(t != forwardT-1) {
+//                 for(int m = 0; m < batch_size; ++m) {
+//                     for(int i = 0; i < matrixSize[t][0]; ++i) {
+//                         output[m][i] = 1/(1+exp(-output[m][i]));
+//                     }
+//                     forwardLayerData[m].push_back(output[m]);
+//                 }
+//             }
+//         }
+//         layer_input = move(output);
+//     }
+//     for(int m = 0; m < batch_size; ++m) {
+//         double max_v = *max_element(layer_input[m].begin(), layer_input[m].end());
+//         for(auto & e: layer_input[m]) {
+//             e -= max_v;
+//         }
+//         singleSoftMax(layer_input[m], output[m]);
+//         forwardLayerData[m].push_back(output[m]);
+//     }
+//     return move(output);
+// }
 
 
 double MLP::singleMSELoss(const vector<double> & forward_output, const vector<double> & ideal_output) {
@@ -288,6 +305,9 @@ void MLP::single_backward(const vector<double> & output, unsigned char label) {
         
         //softmax+crossEntropy
         backwardLayerDelta[0][layerNum-1][i] = output[i] - label_arr[i];
+#if DEBUG_MODE
+        cout<< layerNum-1 <<" " << output[i] <<" " <<label_arr[i]<< endl;
+#endif
     }
 
 
@@ -296,7 +316,12 @@ void MLP::single_backward(const vector<double> & output, unsigned char label) {
         for(int i = 0; i < layerSize[t]; ++i) {
             for(int k = 0; k < layerSize[t+1]; ++k) {
                 //delta j(l) += delta k(l+1)* w kj(l+1)*f'(z j(l))
-                backwardLayerDelta[0][t][i] += backwardLayerDelta[0][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[0][2*t-1][i]*(1-forwardLayerData[0][2*t-1][i]);
+                backwardLayerDelta[0][t][i] += backwardLayerDelta[0][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[0][2*t+1][i]*(1-forwardLayerData[0][2*t+1][i]);
+#if DEBUG_MODE
+                // if(backwardLayerDelta[0][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[0][2*t-1][i]*(1-forwardLayerData[0][2*t-1][i]) != 0) {
+                //     cout<< t <<" " << backwardLayerDelta[0][t+1][k]<<" " << weightMatrix[t][k][i]<<" " <<forwardLayerData[0][2*t+1][i] << " " << forwardLayerData[0][2*t-1][i]*(1-forwardLayerData[0][2*t-1][i])<< endl;   
+                // }
+#endif
             }
         }
     }
@@ -321,7 +346,9 @@ void MLP::single_backward(const vector<double> & output, unsigned char label) {
         for(int i = 0; i < matrixSize[t-1][0]; ++i) {
             for(int j = 0; j < matrixSize[t-1][1]; ++j) {
 #if DEBUG_MODE
-                cout<< t-1 <<" " << weightMatrix[t-1][i][j] << " " << lr*backwardLayerDelta[0][t][i]*forwardLayerData[0][2*t-1][j] << endl;
+            // if(backwardLayerDelta[0][t][i] != 0 && forwardLayerData[0][2*t-1][j] != 0 && t-1 == 0) {
+            //     cout<< t-1 <<" " << weightMatrix[t-1][i][j] <<" " <<backwardLayerDelta[0][t][i] << " " << forwardLayerData[0][2*t-1][j]  << " " << lr*backwardLayerDelta[0][t][i]*forwardLayerData[0][2*t-1][j] << endl;
+            // }
 #endif
 
                 weightMatrix[t-1][i][j] -= lr*backwardLayerDelta[0][t][i]*forwardLayerData[0][2*t-1][j];
@@ -367,56 +394,56 @@ void MLP::single_backward(const vector<double> & output, unsigned char label, ve
 }
 
 
-void MLP::batch_backward(const vector<vector<double>> & output, vector<unsigned char> label) {
-    int batch_size = output.size();
-    vector<vector<double>> label_arr(batch_size, vector<double>(10,0));
-    vector<double> loss(batch_size, 0);
+// void MLP::batch_backward(const vector<vector<double>> & output, vector<unsigned char> label) {
+//     int batch_size = output.size();
+//     vector<vector<double>> label_arr(batch_size, vector<double>(10,0));
+//     vector<double> loss(batch_size, 0);
 
 
-    for(int m = 0; m < batch_size; ++m) {
-        label_arr[m][(size_t)label[m]] = 1.0;
-        loss[m] = singleCrossEntropyLoss(output[m], label_arr[m]);
-    }
+//     for(int m = 0; m < batch_size; ++m) {
+//         label_arr[m][(size_t)label[m]] = 1.0;
+//         loss[m] = singleCrossEntropyLoss(output[m], label_arr[m]);
+//     }
 
-    for(int m = 0; m < batch_size; ++m) {
-        for(int i = 0; i < 10; ++i) {
-            //softmax+crossEntropy
-            backwardLayerDelta[m][layerNum-1][i] = output[m][i] - label_arr[m][i];
-        }
-    }
+//     for(int m = 0; m < batch_size; ++m) {
+//         for(int i = 0; i < 10; ++i) {
+//             //softmax+crossEntropy
+//             backwardLayerDelta[m][layerNum-1][i] = output[m][i] - label_arr[m][i];
+//         }
+//     }
 
-    //calculate delta
-    for(int m = 0; m < batch_size; ++m) {
-        for(int t = layerNum-2; t >= 1; t--) {
-            for(int i = 0; i < layerSize[t]; ++i) {
-                for(int k = 0; k < layerSize[t+1]; ++k) {
-                    //delta j(l) += delta k(l+1)* w kj(l+1)*f'(z j(l))
-                    backwardLayerDelta[m][t][i] += backwardLayerDelta[m][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[m][2*t-1][i]*(1-forwardLayerData[m][2*t-1][i]);
-                }
-            }
-        }
-    }
+//     //calculate delta
+//     for(int m = 0; m < batch_size; ++m) {
+//         for(int t = layerNum-2; t >= 1; t--) {
+//             for(int i = 0; i < layerSize[t]; ++i) {
+//                 for(int k = 0; k < layerSize[t+1]; ++k) {
+//                     //delta j(l) += delta k(l+1)* w kj(l+1)*f'(z j(l))
+//                     backwardLayerDelta[m][t][i] += backwardLayerDelta[m][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[m][2*t-1][i]*(1-forwardLayerData[m][2*t-1][i]);
+//                 }
+//             }
+//         }
+//     }
 
-    //BGD update w, b 
-    for(int t = 1; t < layerNum; ++t) {
-        for(int i = 0; i < matrixSize[t-1][0]; ++i) {
-            for(int j = 0; j < matrixSize[t-1][1]; ++j) {
-                double total_w_update = 0;
-                for(int m = 0; m < batch_size; ++m) {
-                    total_w_update += lr*backwardLayerDelta[m][t][i]*forwardLayerData[m][2*t-1][j];
-                }
-                weightMatrix[t-1][i][j] -= total_w_update/batch_size;
-            }
-        }
-        for(int i = 0; i < matrixSize[t-1][0]; ++i) {
-            double total_w_update = 0;
-            for(int m = 0; m < batch_size; ++m) {
-                total_w_update += lr*backwardLayerDelta[m][t][i];
-            }
-            biasMatrix[t-1][i] -= total_w_update/batch_size;
-        }
-    }
-}
+//     //BGD update w, b 
+//     for(int t = 1; t < layerNum; ++t) {
+//         for(int i = 0; i < matrixSize[t-1][0]; ++i) {
+//             for(int j = 0; j < matrixSize[t-1][1]; ++j) {
+//                 double total_w_update = 0;
+//                 for(int m = 0; m < batch_size; ++m) {
+//                     total_w_update += lr*backwardLayerDelta[m][t][i]*forwardLayerData[m][2*t-1][j];
+//                 }
+//                 weightMatrix[t-1][i][j] -= total_w_update/batch_size;
+//             }
+//         }
+//         for(int i = 0; i < matrixSize[t-1][0]; ++i) {
+//             double total_w_update = 0;
+//             for(int m = 0; m < batch_size; ++m) {
+//                 total_w_update += lr*backwardLayerDelta[m][t][i];
+//             }
+//             biasMatrix[t-1][i] -= total_w_update/batch_size;
+//         }
+//     }
+// }
 
 
 pair<double, double> MLP::validation(const vector<array<unsigned char, 784>> & validation_data, const vector<unsigned char> & validation_label) {
@@ -434,7 +461,21 @@ pair<double, double> MLP::validation(const vector<array<unsigned char, 784>> & v
             // cout << "hit !"<<endl;
             hit += 1.0;
         }
-        total_loss += singleCrossEntropyLoss(output, label_arr);
+        double loss = singleCrossEntropyLoss(output, label_arr);
+        total_loss += loss;
+
+#if DEBUG_MODE
+        // for(auto e: output) {
+        //     cout << e <<" ";
+        // }
+        // cout <<endl;
+        // for(auto e: label_arr) {
+        //     cout << e<< " ";
+        // }
+        // cout << endl;
+        // cout <<"Loss: " << loss<<endl;
+#endif
+
     }
     
     double average_loss = total_loss/(double)sz;
@@ -462,9 +503,11 @@ void MLP::basic_single_train(int epoch) {
         dataLoader->dataShuffle();
         int index = -1;
         double train_hit = 0;
+        // int s = 0;
 
         //SGD
         while((index = dataLoader->getNextDataIndex()) != -1) {
+            // index = index % 4;
             // cout << index <<endl;
             auto output = single_forward(dataLoader->train_data[index], dataLoader->train_label[index]);
             auto max_it = max_element(output.begin(), output.end());
@@ -473,15 +516,19 @@ void MLP::basic_single_train(int epoch) {
                 train_hit += 1.0;
             }
 #if DEBUG_MODE
-            cout << predict_index << " " << (int)dataLoader->train_label[index] << endl;
+            // s++;
+            // if(s > 10) {
+            //     exit(0);
+            // }
+            // cout << predict_index << " " << (int)dataLoader->train_label[index] << endl;
             // for(auto & e: output) {
             //     cout << e<< " ";
             // }
             // cout <<endl;
-            // cout<<(int)dataLoader->train_label[index]<<endl;
-            if(index > 4) {
-                exit(0);
-            }
+            // // cout<<(int)dataLoader->train_label[index]<<endl;
+            // if(index > 12) {
+            //     exit(0);
+            // }
 #endif
 
             single_backward(output, dataLoader->train_label[index]);
@@ -494,9 +541,9 @@ void MLP::basic_single_train(int epoch) {
             //     cout << endl;
             //     cout <<endl << endl <<endl;
             // }
-            // if(index > 4) {
-            //     exit(0);
-            // }
+            if(index > 2) {
+                exit(0);
+            }
 #endif
         }
 
