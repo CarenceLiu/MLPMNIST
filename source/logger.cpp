@@ -9,9 +9,9 @@ Logger::Logger(const string log_filename, const string loss_filename):
         assert(lossResultFile.is_open());
     }
 
-void Logger::log(int epoch, double loss, double train_acc, double validation_acc) {
-    logFile << "[Train Log] epoch " << epoch << ", loss " << loss <<", train accuracy: " << train_acc << ", test accuracy: " << validation_acc << endl; 
-    cout << "[Train Log] epoch " << epoch << ", loss " << loss <<", train accuracy: " << train_acc << ", test accuracy: " << validation_acc << endl; 
+void Logger::log(int epoch, double train_loss, double validation_loss, double train_acc, double validation_acc) {
+    logFile << "[Train Log] epoch " << epoch << ", train loss: " << train_loss << ", test loss: " << validation_loss <<", train accuracy: " << train_acc << ", test accuracy: " << validation_acc << endl; 
+    cout << "[Train Log] epoch " << epoch << ", train loss: " << train_loss << ", test loss: " << validation_loss <<", train accuracy: " << train_acc << ", test accuracy: " << validation_acc << endl;
 }
 
 void Logger::log(const string & line) {

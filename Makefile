@@ -10,12 +10,11 @@ INCLUDES = -Isource
 
 # Specify the target binaries (from the test directories)
 TARGETS = test_1/test_1 \
-        #   test_2_1/test_2_1 \
-        #   test_2_2/test_2_2 \
-        #   test_2_3/test_2_3 \
-        #   test_2_4/test_2_4 \
-        #   test_2_5/test_2_5 \
-        #   test_2_6/test_2_6
+          test_2_1/test_2_1 \
+          test_2_2/test_2_2 \
+          test_2_3/test_2_3 \
+          test_2_4/test_2_4 \
+          test_2_5/test_2_5 \
 
 # Default target
 all: $(TARGETS)

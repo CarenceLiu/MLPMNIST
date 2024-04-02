@@ -80,6 +80,57 @@ void MLP::random_init() {
 #endif
 }
 
+void MLP::xavier_uniform_init() {
+    random_device rd;
+    std::mt19937 gen(rd());
+
+    for(int t = 0; t < matrixSize.size(); ++t) {
+        auto [x, y] = matrixSize[t];
+        double threshold = sqrt(6/(double)(x+y));
+        std::uniform_real_distribution<> dis(-threshold, threshold);
+        for(int i = 0; i < x; ++i) {
+            for(int j = 0; j < y; ++j) {
+                weightMatrix[t][i][j] = dis(gen);
+                if(weightMatrix[t][i][j] == 0) {
+                    weightMatrix[t][i][j] = 1e-5;
+                }
+            }
+        }
+        for(int i = 0; i < x; ++i) {
+            biasMatrix[t][i] = dis(gen);
+            if(biasMatrix[t][i] == 0) {
+                biasMatrix[t][i] = 1e-5;
+            }
+        }
+    }
+}
+
+void MLP::xavier_normal_init() {
+    random_device rd;
+    std::mt19937 gen(rd());
+
+    for(int t = 0; t < matrixSize.size(); ++t) {
+        auto [x, y] = matrixSize[t];
+        double threshold = 2/(double)(x+y);
+        std::normal_distribution<double> dis(0, threshold);
+        for(int i = 0; i < x; ++i) {
+            for(int j = 0; j < y; ++j) {
+                weightMatrix[t][i][j] = dis(gen);
+                if(weightMatrix[t][i][j] == 0) {
+                    weightMatrix[t][i][j] = 1e-5;
+                }
+            }
+        }
+        for(int i = 0; i < x; ++i) {
+            biasMatrix[t][i] = dis(gen);
+            if(biasMatrix[t][i] == 0) {
+                biasMatrix[t][i] = 1e-5;
+            }
+        }
+    }
+}
+
+
 void MLP::singleSoftMax(const vector<double> & output, vector<double> & result) {
     double sum = 0;
     for(int i = 0; i < 10; ++i) {
@@ -292,7 +343,49 @@ double MLP::singleCrossEntropyLoss(const vector<double> & forward_output, const 
     return loss;
 }
 
-void MLP::single_backward(const vector<double> & output, unsigned char label) {
+double MLP::singleCrossEntropyLossL1Norm(const vector<double> & forward_output, const vector<double> & ideal_output, double lambda) {
+    double loss = 0;
+    double total_w = 0;
+    
+    for(int i = 0; i < 10; ++i) {
+        loss += -ideal_output[i] * log(forward_output[i]+1e-7);
+    }
+
+    for(auto &m:weightMatrix) {
+        for(auto & line: m) {
+            for(auto & w: line) {
+                total_w += abs(w);
+            }
+        }
+    }
+
+    loss += lambda*total_w;
+
+    return loss;
+}
+
+double MLP::singleCrossEntropyLossL2Norm(const vector<double> & forward_output, const vector<double> & ideal_output, double lambda) {
+    double loss = 0;
+    double total_w = 0;
+    
+    for(int i = 0; i < 10; ++i) {
+        loss += -ideal_output[i] * log(forward_output[i]+1e-7);
+    }
+
+    for(auto &m:weightMatrix) {
+        for(auto & line: m) {
+            for(auto & w: line) {
+                total_w += w*w;
+            }
+        }
+    }
+
+    loss += 0.5*lambda*total_w;
+
+    return loss;
+}
+
+double MLP::single_backward(const vector<double> & output, unsigned char label) {
     vector<double> label_arr(10,0);
     label_arr[(size_t)label] = 1.0;
 
@@ -358,9 +451,11 @@ void MLP::single_backward(const vector<double> & output, unsigned char label) {
             biasMatrix[t-1][i] -= lr*backwardLayerDelta[0][t][i];
         }
     }
+
+    return loss;
 }
 
-void MLP::single_backward(const vector<double> & output, unsigned char label, vector<vector<vector<double>>> & weightMatrixUpdate, vector<vector<double>> biasMatrixUpdate) {
+double MLP::single_backward(const vector<double> & output, unsigned char label, vector<vector<vector<double>>> & weightMatrixUpdate, vector<vector<double>> & biasMatrixUpdate) {
     vector<double> label_arr(10,0);
     label_arr[(size_t)label] = 1.0;
 
@@ -375,7 +470,7 @@ void MLP::single_backward(const vector<double> & output, unsigned char label, ve
         for(int i = 0; i < layerSize[t]; ++i) {
             for(int k = 0; k < layerSize[t+1]; ++k) {
                 //delta j(l) += delta k(l+1)* w kj(l+1)*f'(z j(l))
-                backwardLayerDelta[0][t][i] += backwardLayerDelta[0][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[0][2*t-1][i]*(1-forwardLayerData[0][2*t-1][i]);
+                backwardLayerDelta[0][t][i] += backwardLayerDelta[0][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[0][2*t+1][i]*(1-forwardLayerData[0][2*t+1][i]);
             }
         }
     }
@@ -391,8 +486,117 @@ void MLP::single_backward(const vector<double> & output, unsigned char label, ve
             biasMatrixUpdate[t-1][i] -= lr*backwardLayerDelta[0][t][i];
         }
     }
+
+    return loss;
 }
 
+double MLP::single_backward(const vector<double> & output, unsigned char label, vector<vector<vector<double>>> & weightMatrixUpdate, vector<vector<double>> & biasMatrixUpdate, int mode, double momentum_beta) {
+    vector<double> label_arr(10,0);
+    label_arr[(size_t)label] = 1.0;
+
+    double loss = singleCrossEntropyLoss(output, label_arr);
+
+    for(int i = 0; i < 10; ++i) {
+        backwardLayerDelta[0][layerNum-1][i] = output[i] - label_arr[i];
+    }
+
+    //calculate delta
+    for(int t = layerNum-2; t >= 1; t--) {
+        for(int i = 0; i < layerSize[t]; ++i) {
+            for(int k = 0; k < layerSize[t+1]; ++k) {
+                //delta j(l) += delta k(l+1)* w kj(l+1)*f'(z j(l))
+                backwardLayerDelta[0][t][i] += backwardLayerDelta[0][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[0][2*t+1][i]*(1-forwardLayerData[0][2*t+1][i]);
+            }
+        }
+    }
+
+    // update w, b 
+    for(int t = 1; t < layerNum; ++t) {
+        for(int i = 0; i < matrixSize[t-1][0]; ++i) {
+            for(int j = 0; j < matrixSize[t-1][1]; ++j) {
+                if(mode == 1) {
+                    weightMatrixUpdate[t-1][i][j] *= momentum_beta;
+                    weightMatrixUpdate[t-1][i][j] += lr*backwardLayerDelta[0][t][i]*forwardLayerData[0][2*t-1][j];
+                }
+                else if(mode == 2) {
+                    weightMatrixUpdate[t-1][i][j] *= momentum_beta;
+                    weightMatrixUpdate[t-1][i][j] += lr*(backwardLayerDelta[0][t][i]*forwardLayerData[0][2*t-1][j]+momentum_beta*weightMatrixUpdate[t-1][i][j]);
+                }
+                weightMatrix[t-1][i][j] -= weightMatrixUpdate[t-1][i][j];
+            }
+        }
+        for(int i = 0; i < matrixSize[t-1][0]; ++i) {
+            if(mode == 1) {
+                biasMatrixUpdate[t-1][i] *= momentum_beta;
+                biasMatrixUpdate[t-1][i] += lr*backwardLayerDelta[0][t][i];
+            }
+            else if(mode == 2) {
+                biasMatrixUpdate[t-1][i] *= momentum_beta;
+                biasMatrixUpdate[t-1][i] += lr*(backwardLayerDelta[0][t][i]+momentum_beta*biasMatrixUpdate[t-1][i]);
+            }
+            biasMatrix[t-1][i] -= biasMatrixUpdate[t-1][i];
+        }
+    }
+
+    return loss;
+}
+
+
+double MLP::single_backwardNorm(const vector<double> & output, unsigned char label, int mode, double lambda) {
+    vector<double> label_arr(10,0);
+    label_arr[(size_t)label] = 1.0;
+
+    double loss = 0;
+    // if(mode == 1) {
+    //     loss = singleCrossEntropyLossL1Norm(output, label_arr, lambda);
+    // }
+    // else if(mode == 2) {
+    //     loss = singleCrossEntropyLossL1Norm(output, label_arr, lambda);
+    // }
+    // else{
+        loss = singleCrossEntropyLoss(output, label_arr);
+    // }
+
+    for(int i = 0; i < 10; ++i) {
+        backwardLayerDelta[0][layerNum-1][i] = output[i] - label_arr[i];
+    }
+
+
+    //calculate delta
+    for(int t = layerNum-2; t >= 1; t--) {
+        for(int i = 0; i < layerSize[t]; ++i) {
+            for(int k = 0; k < layerSize[t+1]; ++k) {
+                //delta j(l) += delta k(l+1)* w kj(l+1)*f'(z j(l))
+                backwardLayerDelta[0][t][i] += backwardLayerDelta[0][t+1][k]*weightMatrix[t][k][i]*forwardLayerData[0][2*t+1][i]*(1-forwardLayerData[0][2*t+1][i]);
+            }
+        }
+    }
+
+    // update w, b 
+    for(int t = 1; t < layerNum; ++t) {
+        for(int i = 0; i < matrixSize[t-1][0]; ++i) {
+            for(int j = 0; j < matrixSize[t-1][1]; ++j) {
+                if(mode == 1) {     //L1 normalization
+                    if(weightMatrix[t-1][i][j] >= 0) {
+                        weightMatrix[t-1][i][j] -= lr*lambda;
+                    }
+                    else {
+                        weightMatrix[t-1][i][j] += lr*lambda;
+                    }
+                }
+                else if(mode == 2) {    //l2 normalization
+                    weightMatrix[t-1][i][j] -= lr*lambda*weightMatrix[t-1][i][j];
+                }
+                weightMatrix[t-1][i][j] -= lr*backwardLayerDelta[0][t][i]*forwardLayerData[0][2*t-1][j];
+            }
+        }
+        for(int i = 0; i < matrixSize[t-1][0]; ++i) {
+            biasMatrix[t-1][i] -= lr*backwardLayerDelta[0][t][i];
+        }
+    }
+
+    return loss;
+}
 
 // void MLP::batch_backward(const vector<vector<double>> & output, vector<unsigned char> label) {
 //     int batch_size = output.size();
@@ -503,6 +707,7 @@ void MLP::basic_single_train(int epoch) {
         dataLoader->dataShuffle();
         int index = -1;
         double train_hit = 0;
+        double total_loss = 0;
         // int s = 0;
 
         //SGD
@@ -531,7 +736,7 @@ void MLP::basic_single_train(int epoch) {
             // }
 #endif
 
-            single_backward(output, dataLoader->train_label[index]);
+            total_loss += single_backward(output, dataLoader->train_label[index]);
 
 #if DEBUG_MODE
             // for(auto & v: weightMatrix) {
@@ -552,8 +757,8 @@ void MLP::basic_single_train(int epoch) {
 
         // cout << train_hit<<endl;
         // logger->log(t, loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
-        logger->log(t, loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
-        logger->lossPrint(loss);
+        logger->log(t, total_loss/(double)dataLoader->train_data.size(), loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
+        logger->lossPrint(total_loss/(double)dataLoader->train_data.size());
 
     }
 
@@ -590,6 +795,7 @@ void MLP::basic_batch_train(int epoch) {
         }
 
         //BGD
+        double total_loss = 0;
         while((index = dataLoader->getNextDataIndex()) != -1) {
 
             auto output = single_forward(dataLoader->train_data[index], dataLoader->train_label[index]);
@@ -599,7 +805,7 @@ void MLP::basic_batch_train(int epoch) {
                 train_hit += 1.0;
             }
 
-            single_backward(output, dataLoader->train_label[index], weightMatrixUpdate, biasMatrixUpdate);
+            total_loss += single_backward(output, dataLoader->train_label[index], weightMatrixUpdate, biasMatrixUpdate);
         }
 
         //BGD update
@@ -618,7 +824,217 @@ void MLP::basic_batch_train(int epoch) {
 
         auto [loss, accuracy] = validation(dataLoader->validation_data, dataLoader->validation_label);
 
-        logger->log(t, loss, train_hit/(double)batch_size, accuracy);
-        logger->lossPrint(loss);
+        logger->log(t, total_loss/(double)batch_size, loss, train_hit/(double)batch_size, accuracy);
+        logger->lossPrint(total_loss/(double)batch_size);
     }
+}
+
+
+void MLP::SGD_train(int epoch) {
+    int t = 0;
+    assert(logger != nullptr);
+    assert(dataLoader != nullptr);
+
+    //pre init
+    random_init();
+    string info = "Basic SGD Train: random init w, epoch: " + to_string(epoch) + ", learning rate: " + to_string(lr) + ", layer size: ";
+    for(auto layer:layerSize) {
+        info += to_string(layer);
+        info += " ";
+    }
+    logger->log(info);
+
+    //begin train 
+    for(int t = 0; t < epoch; ++t) {
+        dataLoader->dataShuffle();
+        double train_hit = 0;
+        // int s = 0;
+
+        //SGD;
+        auto output = single_forward(dataLoader->train_data[0], dataLoader->train_label[0]);
+        auto max_it = max_element(output.begin(), output.end());
+        int predict_index = distance(output.begin(), max_it);
+        if(predict_index == (int)dataLoader->train_label[0]) {
+            train_hit += 1.0;
+        }
+        double train_loss = single_backward(output, dataLoader->train_label[0]);
+
+        //validation 
+        // auto [loss, accuracy] = validation(dataLoader->validation_data, dataLoader->validation_label);
+
+        // cout << train_hit<<endl;
+        // logger->log(t, loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
+        logger->log(t, train_loss, 0, 0, 0);
+        logger->lossPrint(train_loss);
+
+    }
+
+
+}
+
+void MLP::SGD_Momentum_train(int epoch) {
+    int t = 0;
+    assert(logger != nullptr);
+    assert(dataLoader != nullptr);
+
+    vector<vector<vector<double>>> weightMatrixUpdate{};
+    vector<vector<double>> biasMatrixUpdate{};
+    for(int i = 1; i < layerNum; ++i) {
+        // cout << layerSize[i] << " " << layerSize[i-1] << endl;
+        auto weight = vector<vector<double>>(layerSize[i], vector<double>(layerSize[i-1], 0));
+        weightMatrixUpdate.push_back(move(weight));
+        auto bias = vector<double>(layerSize[i],0);
+        biasMatrixUpdate.push_back(move(bias));
+    }
+
+    //pre init
+    random_init();
+    string info = "Momentum SGD Train: random init w, epoch: " + to_string(epoch) + ", learning rate: " + to_string(lr) + ", layer size: ";
+    for(auto layer:layerSize) {
+        info += to_string(layer);
+        info += " ";
+    }
+    logger->log(info);
+
+    //begin train 
+    for(int t = 0; t < epoch; ++t) {
+        dataLoader->dataShuffle();
+        double train_hit = 0;
+        // int s = 0;
+
+        //SGD;
+        auto output = single_forward(dataLoader->train_data[0], dataLoader->train_label[0]);
+        auto max_it = max_element(output.begin(), output.end());
+        int predict_index = distance(output.begin(), max_it);
+        if(predict_index == (int)dataLoader->train_label[0]) {
+            train_hit += 1.0;
+        }
+        double train_loss = single_backward(output, dataLoader->train_label[0], weightMatrixUpdate, biasMatrixUpdate, 1, 0.9);
+
+        //validation 
+        // auto [loss, accuracy] = validation(dataLoader->validation_data, dataLoader->validation_label);
+
+        // cout << train_hit<<endl;
+        // logger->log(t, loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
+        logger->log(t, train_loss, 0, 0, 0);
+        logger->lossPrint(train_loss);
+
+    }
+
+
+}
+
+void MLP::SGD_Nesterov_train(int epoch) {
+    int t = 0;
+    assert(logger != nullptr);
+    assert(dataLoader != nullptr);
+
+    vector<vector<vector<double>>> weightMatrixUpdate{};
+    vector<vector<double>> biasMatrixUpdate{};
+    for(int i = 1; i < layerNum; ++i) {
+        // cout << layerSize[i] << " " << layerSize[i-1] << endl;
+        auto weight = vector<vector<double>>(layerSize[i], vector<double>(layerSize[i-1], 0));
+        weightMatrixUpdate.push_back(move(weight));
+        auto bias = vector<double>(layerSize[i],0);
+        biasMatrixUpdate.push_back(move(bias));
+    }
+
+    //pre init
+    random_init();
+    string info = "Nesterov SGD Train: random init w, epoch: " + to_string(epoch) + ", learning rate: " + to_string(lr) + ", layer size: ";
+    for(auto layer:layerSize) {
+        info += to_string(layer);
+        info += " ";
+    }
+    logger->log(info);
+
+    //begin train 
+    for(int t = 0; t < epoch; ++t) {
+        dataLoader->dataShuffle();
+        double train_hit = 0;
+        // int s = 0;
+
+        //SGD;
+        auto output = single_forward(dataLoader->train_data[0], dataLoader->train_label[0]);
+        auto max_it = max_element(output.begin(), output.end());
+        int predict_index = distance(output.begin(), max_it);
+        if(predict_index == (int)dataLoader->train_label[0]) {
+            train_hit += 1.0;
+        }
+        double train_loss = single_backward(output, dataLoader->train_label[0], weightMatrixUpdate, biasMatrixUpdate, 2, 0.9);
+
+        //validation 
+        // auto [loss, accuracy] = validation(dataLoader->validation_data, dataLoader->validation_label);
+
+        // cout << train_hit<<endl;
+        // logger->log(t, loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
+        logger->log(t, train_loss, 0, 0, 0);
+        logger->lossPrint(train_loss);
+
+    }
+
+
+}
+
+
+
+void MLP::SGD_train(int epoch, int mode) {
+    int t = 0;
+    assert(logger != nullptr);
+    assert(dataLoader != nullptr);
+
+    //pre init
+    if(mode == 1) {
+        xavier_uniform_init();
+    }
+    else if(mode == 2) {
+        xavier_normal_init();
+    }
+    else {
+        random_init();
+    }
+    string info = "Basic SGD Train: random init w, epoch: " + to_string(epoch) + ", learning rate: " + to_string(lr) + ", layer size: ";
+    for(auto layer:layerSize) {
+        info += to_string(layer);
+        info += " ";
+    }
+    logger->log(info);
+
+    //begin train 
+    for(int t = 0; t < epoch; ++t) {
+        dataLoader->dataShuffle();
+        double train_hit = 0;
+        // int s = 0;
+
+        //SGD;
+        auto output = single_forward(dataLoader->train_data[0], dataLoader->train_label[0]);
+        auto max_it = max_element(output.begin(), output.end());
+        int predict_index = distance(output.begin(), max_it);
+        if(predict_index == (int)dataLoader->train_label[0]) {
+            train_hit += 1.0;
+        }
+
+        double train_loss = 0;
+        if(mode == 3) {     //L1 normalization
+            train_loss = single_backwardNorm(output, dataLoader->train_label[0], 1, 0.1);
+        }
+        else if(mode == 4) {    //l2 normalization
+            train_loss = single_backwardNorm(output, dataLoader->train_label[0], 2, 0.1);
+        }
+        else {
+            train_loss = single_backward(output, dataLoader->train_label[0]);
+        }
+        //validation 
+        // auto [loss, accuracy] = validation(dataLoader->validation_data, dataLoader->validation_label);
+
+        // cout << train_hit<<endl;
+        // logger->log(t, loss, train_hit/(double)dataLoader->train_data.size(), accuracy);
+        logger->log(t, train_loss, 0, 0, 0);
+        logger->lossPrint(train_loss);
+
+    }
+
+    auto [loss, accuracy] = validation(dataLoader->validation_data, dataLoader->validation_label);
+
+    logger->log(t, 0, loss, 0, accuracy);
 }
